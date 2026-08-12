@@ -28,8 +28,13 @@ the machine you run it on.
 
 ## Running it (end users)
 
-Just double-click `DicomToolkit.exe` (see "Building the exe" below to produce
-it). Everything it saves between runs (node presets, settings) lives under
+Just double-click `DicomToolkit.exe` - no Python, no dependencies, nothing
+else to install. Every push to `main` automatically builds a fresh
+`DicomToolkit.exe` via GitHub Actions; grab it from the latest successful
+run under the repo's **Actions -> Build Windows exe** tab (the
+`DicomToolkit-windows-exe` artifact) - no need to build it yourself unless
+you're changing the source (see "Building the exe" below for that case).
+Everything it saves between runs (node presets, settings) lives under
 `%APPDATA%\DicomToolkit\`, not next to the exe - so the exe can be copied
 anywhere, including read-only locations, and run by multiple Windows user
 accounts independently.
