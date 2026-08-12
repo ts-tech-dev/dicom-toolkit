@@ -13,6 +13,10 @@ Dataset's pixel data with window/level applied, and supports:
      rectangle and emits region_drawn(Rect) on release - used by the
      Masking tab to let you pick redaction regions visually instead of
      typing pixel coordinates.
+  - A persistent mask-region overlay (set_mask_preview_regions()): drawn
+     as translucent red rectangles on top of the image so already-marked
+     regions stay visible - across pan/zoom/frame changes - instead of
+     only flashing during the drag that created them.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ import numpy as np
 from pydicom.dataset import Dataset
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsRectItem,
@@ -79,6 +83,7 @@ class ImageView(QGraphicsView):
         self.mask_mode = False
         self._mask_drag_start: Optional[QPointF] = None
         self._rubber_band_item: Optional[QGraphicsRectItem] = None
+        self._mask_preview_items: list[QGraphicsRectItem] = []
 
         self._wl_drag_start = None
         self._wl_drag_origin_cw = None
@@ -140,6 +145,28 @@ class ImageView(QGraphicsView):
 
     def current_frame_index(self) -> int:
         return self._frame_index
+
+    # -- persistent mask-region overlay --------------------------------------
+
+    def set_mask_preview_regions(self, regions) -> None:
+        """
+        Show `regions` (core.mask.Rect) as translucent red rectangles on top
+        of the image, replacing whatever was shown before. These are plain
+        scene items (not baked into the pixmap), so they survive pan/zoom
+        and frame changes without needing to be reapplied - kept only so a
+        drawn region stays visibly marked instead of disappearing the
+        instant the drag that created it ends.
+        """
+        for item in self._mask_preview_items:
+            self._scene.removeItem(item)
+        self._mask_preview_items = []
+        for r in regions:
+            item = QGraphicsRectItem(QRectF(r.x, r.y, r.width, r.height))
+            item.setPen(QPen(QColor(255, 40, 40), 2))
+            item.setBrush(QBrush(QColor(255, 40, 40, 90)))
+            item.setZValue(10)
+            self._scene.addItem(item)
+            self._mask_preview_items.append(item)
 
     # -- rendering ------------------------------------------------------------
 

@@ -16,7 +16,7 @@ tabs.
 
 | Tab | Tool (dropdown, where applicable) | What it does |
 |---|---|---|
-| **Home** | *(no dropdown - this is the main page)* | Open a file or folder of imaging, view it with window/level, zoom, pan, and multi-frame scrubbing; draw rectangles in Mask Mode to redact burned-in PHI; export the current frame to PNG/JPG or save a masked copy to DICOM. |
+| **Home** | *(no dropdown - this is the main page)* | Open a file or folder of imaging, browse it as a Patient -> Study -> Series -> Image tree, view it with window/level, zoom, pan, multi-frame (cine) scrubbing and image-to-image scrubbing through a series; draw rectangles in Mask Mode to redact burned-in PHI (marked regions stay visible on the image); export the current frame to PNG/JPG, or apply the drawn regions across the *whole study* and export masked DICOM copies of every image in it. |
 | **PACS Admin** | C-ECHO | Verify a node is reachable and answering (DICOM "ping"). |
 | | Send (C-STORE) | Push files/folders to a remote AE. |
 | | Query/Retrieve | C-FIND a PACS at Patient/Study/Series/Image level, then C-MOVE or C-GET the results. |
@@ -111,7 +111,7 @@ ui/                        all GUI code (PySide6)
   main_window.py             assembles the three top-level tabs, View > Theme menu
   theme.py                     Light/Dark/Grey QPalette definitions + persistence
   tab_group.py                   dropdown-plus-stack widget PACS Admin/Tools are built from
-  tab_home.py                     Home tab: view, mask, export
+  tab_home.py                     Home tab: Patient/Study/Series/Image browser, view, mask, export
   worker.py                        generic background-thread runner for network/batch jobs
   tab_*.py                           one file per PACS Admin / Tools entry
   widgets/                            reusable pieces (image viewer, node picker, log console)
@@ -150,3 +150,11 @@ Every module has a docstring explaining what it does and, where relevant,
   maps the most commonly-needed geometry/timing/windowing functional
   groups. Enhanced US Volume and other volumetric SOP classes aren't
   covered.
+- **Home's "Apply Masks & Export Study"** applies the *pixel coordinates*
+  you drew on one image to every image in the study, across all series.
+  It does **not** rescale regions for images of a different size than the
+  one you drew on (e.g. a differently-sized localizer/scout series in the
+  same study) - `core.mask.apply_masks` clips out-of-bounds coordinates
+  rather than erroring, but a region can end up covering the wrong area
+  on a differently-sized image. Spot-check output across series before
+  relying on it, or draw/export per-series if a study mixes image sizes.
