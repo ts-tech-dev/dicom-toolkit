@@ -2,14 +2,13 @@
 
 A single-executable DICOM testing toolkit for PACS analysts: verification,
 sending, query/retrieve, modality worklist, file validation, image viewing,
-pixel masking, de-identification, Enhanced-to-Classic SOP conversion, a raw
-dataset editor, synthetic test data generation, and a local Storage SCP
-receiver - all in one Windows `.exe`, no installer, no Python required on
-the machine you run it on.
+pixel masking, de-identification, Enhanced-to-Classic SOP conversion, and a
+local Storage SCP receiver - all in one Windows `.exe`, no installer, no
+Python required on the machine you run it on.
 
 ## Features / tabs
 
-The app has three tabs. **Home** is the main page; **PACS Admin** and
+The app has three tabs. **Home** is the main page; **DIMSE** and
 **Tools** each hold a group of related tools behind a dropdown at the top
 of the tab, so switching tools doesn't mean hunting across a long row of
 tabs.
@@ -17,18 +16,15 @@ tabs.
 | Tab | Tool (dropdown, where applicable) | What it does |
 |---|---|---|
 | **Home** | *(no dropdown - this is the main page)* | Open a file or folder of imaging, browse it as a Patient -> Study -> Series -> Image tree, view it with window/level, zoom, pan, multi-frame (cine) scrubbing, and mouse-wheel/button scrubbing between images in a series; draw rectangles in Mask Mode to redact burned-in PHI - regions are kept per-image (switch images/series and back and they're still there to edit or delete) and can optionally be broadcast to every image in the series as you draw; export the current frame to PNG/JPG, or export the *whole study* at once - every image with regions gets masked, every image without any is copied through unchanged. |
-| **PACS Admin** | C-ECHO | Verify a node is reachable and answering (DICOM "ping"). |
+| **DIMSE** | C-ECHO | Verify a node is reachable and answering (DICOM "ping"). |
 | | Send (C-STORE) | Push files/folders to a remote AE. |
 | | Query/Retrieve | C-FIND a PACS at Patient/Study/Series/Image level, then C-MOVE or C-GET the results. |
 | | Worklist (MWL) | Query a Modality Worklist SCP like a modality would. |
 | | Storage SCP (Receiver) | Run a local listener to test what a device/server sends *to* you. |
-| | Node Presets | Save/manage AE title + host + port profiles you use repeatedly. |
+| | Node Presets | Save/manage AE title + host + port profiles you use repeatedly; picking a preset from any DIMSE tool's node dropdown fills in its AE title/host/port, and the list stays in sync across tabs without a restart. |
 | **Tools** | Validate | Check files for structural errors: missing tags, bad pixel data, malformed UIDs/dates, etc. |
 | | De-identify | PS3.15-style basic profile de-identification, consistent across a whole batch. |
 | | Enhanced -> Classic | Split Enhanced MR/CT/PET multi-frame objects into classic single-frame instances, for viewers/PACS that don't support Enhanced SOP classes. |
-| | Dataset Editor | Browse/edit every tag (including sequences) in a file; add or delete elements. |
-| | Test Pattern Generator | Generate synthetic, non-PHI DICOM images/studies for testing the other tools. |
-| | Batch Tools | Export a folder to PNG/JPG, or write a validation report file. |
 
 ## Running it (end users)
 
@@ -110,16 +106,14 @@ core/                       all DICOM logic - no GUI code, reusable/testable on 
   deidentify.py                PS3.15-style de-identification
   mask.py                        pixel redaction
   enhanced_convert.py             Enhanced -> Classic SOP splitting
-  dataset_utils.py                 Qt tree model for the Dataset Editor
-  test_pattern.py                   synthetic DICOM generator
-  presets.py                         saved node connection profiles
+  presets.py                       saved node connection profiles
 ui/                        all GUI code (PySide6)
   main_window.py             assembles the three top-level tabs, View > Theme menu
   theme.py                     Light/Dark/Grey QPalette definitions + persistence
-  tab_group.py                   dropdown-plus-stack widget PACS Admin/Tools are built from
+  tab_group.py                   dropdown-plus-stack widget DIMSE/Tools are built from
   tab_home.py                     Home tab: Patient/Study/Series/Image browser, view, mask, export
   worker.py                        generic background-thread runner for network/batch jobs
-  tab_*.py                           one file per PACS Admin / Tools entry
+  tab_*.py                           one file per DIMSE / Tools entry
   widgets/                            reusable pieces (image viewer, node picker, log console)
 assets/
   icon.ico / icon.png         app icon (window/taskbar icon + .exe icon)
@@ -142,8 +136,8 @@ Every module has a docstring explaining what it does and, where relevant,
 - **De-identify** implements a practical subset (~50 tags) of DICOM PS3.15
   Annex E's Basic Application Level Confidentiality Profile, plus generic
   UID remapping and overlay/curve stripping. It is **not** the full ~450
-  entry PS3.15 table. Always spot-check output (e.g. in the Dataset Editor
-  or Viewer) before treating de-identified files as safe to share outside
+  entry PS3.15 table. Always spot-check output (e.g. in the Home tab
+  viewer) before treating de-identified files as safe to share outside
   your environment - this is a testing tool, not a certified de-identification
   product.
 - **Mask** and **Enhanced -> Classic** always write output as uncompressed

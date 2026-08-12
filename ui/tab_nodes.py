@@ -74,6 +74,14 @@ class NodesTab(QWidget):
 
         self._refresh_table()
 
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt override naming convention
+        # A NodeSelector elsewhere (Echo, Send, etc.) can save/delete a
+        # preset via its own PresetManager instance; reload from disk so
+        # this tab reflects it without needing an app restart.
+        self.presets.load()
+        self._refresh_table()
+        super().showEvent(event)
+
     def _refresh_table(self) -> None:
         presets = self.presets.all()
         self.table.setRowCount(len(presets))

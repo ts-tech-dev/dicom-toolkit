@@ -55,8 +55,7 @@ from ui.widgets.image_view import ImageView
 from ui.widgets.log_console import LogConsole
 from ui.worker import run_in_background
 
-# A quick-glance subset of header fields - the full tag tree is available
-# in the Dataset Editor (Tools tab) for anything not shown here.
+# A quick-glance subset of header fields, not the full tag tree.
 _QUICK_INFO_FIELDS = [
     "PatientName", "PatientID", "StudyDate", "Modality", "StudyDescription",
     "SeriesDescription", "Rows", "Columns", "BitsAllocated", "PhotometricInterpretation",
@@ -254,13 +253,15 @@ class HomeTab(QWidget):
         center_widget.setLayout(center_panel)
 
         # -- right: masking + export + activity log ------------------------------
-        self.mask_hint_label = QLabel(
+        # Full explanation lives in a tooltip rather than a wrapped label,
+        # to keep this panel narrow and leave the image view the room.
+        self.mask_hint_label = QLabel("Mask Mode: drag on image to redact (ⓘ hover)")
+        self.mask_hint_label.setToolTip(
             "Turn on Mask Mode above, then left-drag on the image to draw a "
             "redaction rectangle. Regions are kept per-image - switch to "
             "another image or series and back, and they're still here to "
             "edit or delete."
         )
-        self.mask_hint_label.setWordWrap(True)
         self.region_list = QListWidget()
         self.remove_region_button = QPushButton("Remove Selected Region")
         self.clear_regions_button = QPushButton("Clear All Regions")
@@ -287,13 +288,11 @@ class HomeTab(QWidget):
         mask_box_layout.addWidget(self.apply_scope_combo)
         mask_box_layout.addWidget(QLabel("When drawing a new region, also add it to:"))
         mask_box_layout.addWidget(self.series_scope_combo)
-        export_study_hint = QLabel(
+        self.export_study_button.setToolTip(
             "Export walks the whole study (all series): images with "
             "regions get masked, images without any are copied through "
             "unchanged."
         )
-        export_study_hint.setWordWrap(True)
-        mask_box_layout.addWidget(export_study_hint)
         mask_box_layout.addWidget(self.export_study_button)
         mask_box = QGroupBox("Masking")
         mask_box.setLayout(mask_box_layout)
@@ -308,13 +307,13 @@ class HomeTab(QWidget):
         self.log = LogConsole()
 
         right_panel = QVBoxLayout()
-        right_panel.addWidget(mask_box, stretch=2)
+        right_panel.addWidget(mask_box, stretch=1)
         right_panel.addWidget(export_box)
         right_panel.addWidget(QLabel("Activity Log:"))
         right_panel.addWidget(self.log, stretch=1)
         right_widget = QWidget()
         right_widget.setLayout(right_panel)
-        right_widget.setMaximumWidth(360)
+        right_widget.setMaximumWidth(280)
 
         splitter = QSplitter()
         splitter.addWidget(left_widget)

@@ -58,12 +58,26 @@ class NodeSelector(QGroupBox):
         self.setLayout(form)
 
     def _refresh_presets(self) -> None:
+        selected_name = self.preset_combo.itemData(self.preset_combo.currentIndex())
+        self.presets.load()
         self.preset_combo.blockSignals(True)
         self.preset_combo.clear()
         self.preset_combo.addItem("(custom)")
         for p in self.presets.all():
             self.preset_combo.addItem(str(p), userData=p.name)
+        if selected_name is not None:
+            idx = self.preset_combo.findData(selected_name)
+            self.preset_combo.setCurrentIndex(idx if idx >= 0 else 0)
         self.preset_combo.blockSignals(False)
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt override naming convention
+        # Presets are edited from other tabs (the Node Presets tab, or
+        # another NodeSelector's Save/Delete), each with its own
+        # PresetManager loaded once at construction. Reload from disk
+        # whenever this selector becomes visible so it never shows a
+        # stale list without requiring an app restart.
+        self._refresh_presets()
+        super().showEvent(event)
 
     def _on_preset_selected(self, index: int) -> None:
         if index <= 0:
