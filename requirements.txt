@@ -1,0 +1,11 @@
+# DICOM Toolkit - Python dependencies
+#
+# Install with:  pip install -r requirements.txt
+# (build.bat does this automatically as part of the Windows exe build)
+
+pydicom>=2.4          # Read/write/parse DICOM files, tag dictionary
+pynetdicom>=2.0        # DICOM networking: C-ECHO, C-STORE, C-FIND, C-MOVE, C-GET, MWL, Storage SCP
+numpy>=1.24            # Pixel array math (windowing, masking, pattern generation)
+Pillow>=10.0            # Export images to PNG/JPG, misc image ops
+PySide6>=6.6             # GUI toolkit (Qt for Python)
+pyinstaller>=6.3          # Packages the app into a single Windows .exe
