@@ -9,22 +9,26 @@ the machine you run it on.
 
 ## Features / tabs
 
-| Tab | What it does |
-|---|---|
-| **C-ECHO** | Verify a node is reachable and answering (DICOM "ping"). |
-| **Send (C-STORE)** | Push files/folders to a remote AE. |
-| **Query/Retrieve** | C-FIND a PACS at Patient/Study/Series/Image level, then C-MOVE or C-GET the results. |
-| **Worklist (MWL)** | Query a Modality Worklist SCP like a modality would. |
-| **Storage SCP (Receiver)** | Run a local listener to test what a device/server sends *to* you. |
-| **Validate** | Check files for structural errors: missing tags, bad pixel data, malformed UIDs/dates, etc. |
-| **Viewer** | View images with window/level, zoom, pan, and multi-frame scrubbing. |
-| **Mask** | Draw rectangles on an image to redact burned-in PHI, save a copy. |
-| **De-identify** | PS3.15-style basic profile de-identification, consistent across a whole batch. |
-| **Enhanced -> Classic** | Split Enhanced MR/CT/PET multi-frame objects into classic single-frame instances, for viewers/PACS that don't support Enhanced SOP classes. |
-| **Dataset Editor** | Browse/edit every tag (including sequences) in a file; add or delete elements. |
-| **Test Pattern Generator** | Generate synthetic, non-PHI DICOM images/studies for testing the other tools. |
-| **Batch Tools** | Export a folder to PNG/JPG, or write a validation report file. |
-| **Node Presets** | Save/manage AE title + host + port profiles you use repeatedly. |
+The app has three tabs. **Home** is the main page; **PACS Admin** and
+**Tools** each hold a group of related tools behind a dropdown at the top
+of the tab, so switching tools doesn't mean hunting across a long row of
+tabs.
+
+| Tab | Tool (dropdown, where applicable) | What it does |
+|---|---|---|
+| **Home** | *(no dropdown - this is the main page)* | Open a file or folder of imaging, view it with window/level, zoom, pan, and multi-frame scrubbing; draw rectangles in Mask Mode to redact burned-in PHI; export the current frame to PNG/JPG or save a masked copy to DICOM. |
+| **PACS Admin** | C-ECHO | Verify a node is reachable and answering (DICOM "ping"). |
+| | Send (C-STORE) | Push files/folders to a remote AE. |
+| | Query/Retrieve | C-FIND a PACS at Patient/Study/Series/Image level, then C-MOVE or C-GET the results. |
+| | Worklist (MWL) | Query a Modality Worklist SCP like a modality would. |
+| | Storage SCP (Receiver) | Run a local listener to test what a device/server sends *to* you. |
+| | Node Presets | Save/manage AE title + host + port profiles you use repeatedly. |
+| **Tools** | Validate | Check files for structural errors: missing tags, bad pixel data, malformed UIDs/dates, etc. |
+| | De-identify | PS3.15-style basic profile de-identification, consistent across a whole batch. |
+| | Enhanced -> Classic | Split Enhanced MR/CT/PET multi-frame objects into classic single-frame instances, for viewers/PACS that don't support Enhanced SOP classes. |
+| | Dataset Editor | Browse/edit every tag (including sequences) in a file; add or delete elements. |
+| | Test Pattern Generator | Generate synthetic, non-PHI DICOM images/studies for testing the other tools. |
+| | Batch Tools | Export a folder to PNG/JPG, or write a validation report file. |
 
 ## Running it (end users)
 
@@ -101,9 +105,11 @@ core/                       all DICOM logic - no GUI code, reusable/testable on 
   test_pattern.py                   synthetic DICOM generator
   presets.py                         saved node connection profiles
 ui/                        all GUI code (PySide6)
-  main_window.py             assembles every tab
+  main_window.py             assembles the three top-level tabs
+  tab_group.py                 dropdown-plus-stack widget PACS Admin/Tools are built from
+  tab_home.py                   Home tab: view, mask, export
   worker.py                    generic background-thread runner for network/batch jobs
-  tab_*.py                       one file per tab
+  tab_*.py                       one file per PACS Admin / Tools entry
   widgets/                        reusable pieces (image viewer, node picker, log console)
 build/
   dicom_toolkit.spec         PyInstaller build configuration

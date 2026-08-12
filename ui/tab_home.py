@@ -1,11 +1,15 @@
 """
-ui/tab_viewer.py
-==================
-Image viewer tab: open a DICOM file (or step through every file in its
-folder) and view it with proper window/level, zoom, pan, and multi-frame
-scrubbing (see ui/widgets/image_view.py for the actual rendering/
-interaction code). Also shows the key header fields at a glance and can
-export the currently-displayed frame to PNG/JPG.
+ui/tab_home.py
+=================
+Home tab: the app's main page. Upload/browse DICOM imaging, view it with
+proper window/level, zoom, pan, and multi-frame scrubbing, optionally mask
+(redact) regions of it, then export either the currently displayed frame
+to PNG/JPG or an masked copy of the file to DICOM.
+
+Viewing and masking share one ImageView (see ui/widgets/image_view.py):
+"Mask Mode" toggles that widget between its two left-drag behaviors -
+window/level adjustment (off) and rectangle drawing (on) - so the same
+image never needs to be reopened in a separate tool to redact it.
 """
 
 from __future__ import annotations
@@ -14,10 +18,13 @@ from pathlib import Path
 
 import pydicom
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QSlider,
@@ -28,10 +35,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
+from core.mask import Rect, apply_masks
 from ui.widgets.image_view import ImageView
 
 # A quick-glance subset of header fields - the full tag tree is available
-# in the Dataset Editor tab for anything not shown here.
+# in the Dataset Editor (Tools tab) for anything not shown here.
 _QUICK_INFO_FIELDS = [
     "PatientName", "PatientID", "StudyDate", "Modality", "StudyDescription",
     "SeriesDescription", "Rows", "Columns", "BitsAllocated", "PhotometricInterpretation",
@@ -39,10 +47,11 @@ _QUICK_INFO_FIELDS = [
 ]
 
 
-class ViewerTab(QWidget):
+class HomeTab(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
+        # -- left: file browser + header quick view --------------------------
         self.open_file_button = QPushButton("Open File...")
         self.open_folder_button = QPushButton("Open Folder...")
         self.open_file_button.clicked.connect(self._on_open_file)
@@ -65,7 +74,10 @@ class ViewerTab(QWidget):
         left_widget = QWidget()
         left_widget.setLayout(left_panel)
 
+        # -- center: image view + frame/window controls -----------------------
         self.image_view = ImageView()
+        self.image_view.region_drawn.connect(self._on_region_drawn)
+        self.image_view.window_level_changed.connect(self._on_window_level_changed)
 
         self.frame_slider = QSlider(Qt.Horizontal)
         self.frame_slider.setMinimum(0)
@@ -74,32 +86,76 @@ class ViewerTab(QWidget):
         self.frame_label = QLabel("Frame: 0 / 0")
 
         self.wl_label = QLabel("Window Center/Width: -")
-        self.image_view.window_level_changed.connect(self._on_window_level_changed)
 
+        self.mask_mode_button = QPushButton("Mask Mode: OFF")
+        self.mask_mode_button.setCheckable(True)
+        self.mask_mode_button.toggled.connect(self._on_mask_mode_toggled)
         self.reset_zoom_button = QPushButton("Reset Zoom")
         self.reset_zoom_button.clicked.connect(lambda: self.image_view.resetTransform())
         self.reset_wl_button = QPushButton("Reset Window/Level")
         self.reset_wl_button.clicked.connect(self._on_reset_window_level)
-        self.export_button = QPushButton("Export Frame to PNG/JPG...")
-        self.export_button.clicked.connect(self._on_export)
 
         controls = QHBoxLayout()
+        controls.addWidget(self.mask_mode_button)
         controls.addWidget(self.reset_zoom_button)
         controls.addWidget(self.reset_wl_button)
-        controls.addWidget(self.export_button)
         controls.addStretch()
         controls.addWidget(self.wl_label)
 
+        center_panel = QVBoxLayout()
+        center_panel.addWidget(self.image_view, stretch=1)
+        center_panel.addWidget(self.frame_label)
+        center_panel.addWidget(self.frame_slider)
+        center_panel.addLayout(controls)
+        center_widget = QWidget()
+        center_widget.setLayout(center_panel)
+
+        # -- right: masking + export --------------------------------------------
+        self.mask_hint_label = QLabel(
+            "Turn on Mask Mode above, then left-drag on the image to draw a "
+            "redaction rectangle."
+        )
+        self.mask_hint_label.setWordWrap(True)
+        self.region_list = QListWidget()
+        self.remove_region_button = QPushButton("Remove Selected Region")
+        self.clear_regions_button = QPushButton("Clear All Regions")
+        self.remove_region_button.clicked.connect(self._on_remove_region)
+        self.clear_regions_button.clicked.connect(self._on_clear_regions)
+        self.apply_scope_combo = QComboBox()
+        self.apply_scope_combo.addItems(["Current frame only", "All frames"])
+        self.save_masked_button = QPushButton("Apply Masks && Save As DICOM...")
+        self.save_masked_button.clicked.connect(self._on_save_masked)
+
+        mask_box_layout = QVBoxLayout()
+        mask_box_layout.addWidget(self.mask_hint_label)
+        mask_box_layout.addWidget(self.region_list, stretch=1)
+        region_buttons = QHBoxLayout()
+        region_buttons.addWidget(self.remove_region_button)
+        region_buttons.addWidget(self.clear_regions_button)
+        mask_box_layout.addLayout(region_buttons)
+        mask_box_layout.addWidget(QLabel("Apply masks to:"))
+        mask_box_layout.addWidget(self.apply_scope_combo)
+        mask_box_layout.addWidget(self.save_masked_button)
+        mask_box = QGroupBox("Masking")
+        mask_box.setLayout(mask_box_layout)
+
+        self.export_image_button = QPushButton("Export Frame to PNG/JPG...")
+        self.export_image_button.clicked.connect(self._on_export_image)
+        export_box_layout = QVBoxLayout()
+        export_box_layout.addWidget(self.export_image_button)
+        export_box = QGroupBox("Export")
+        export_box.setLayout(export_box_layout)
+
         right_panel = QVBoxLayout()
-        right_panel.addWidget(self.image_view, stretch=1)
-        right_panel.addWidget(self.frame_label)
-        right_panel.addWidget(self.frame_slider)
-        right_panel.addLayout(controls)
+        right_panel.addWidget(mask_box, stretch=1)
+        right_panel.addWidget(export_box)
         right_widget = QWidget()
         right_widget.setLayout(right_panel)
+        right_widget.setMaximumWidth(320)
 
         splitter = QSplitter()
         splitter.addWidget(left_widget)
+        splitter.addWidget(center_widget)
         splitter.addWidget(right_widget)
         splitter.setStretchFactor(1, 1)
 
@@ -109,6 +165,7 @@ class ViewerTab(QWidget):
 
         self._current_dir_files: list[str] = []
         self._current_ds = None
+        self._regions: list[Rect] = []
 
     # -- file navigation --------------------------------------------------
 
@@ -144,9 +201,12 @@ class ViewerTab(QWidget):
 
         if "PixelData" not in ds:
             self.info_text.setPlainText("This file has no PixelData (not an image).")
+            self._current_ds = None
             return
 
         self._current_ds = ds
+        self._regions = []
+        self.region_list.clear()
         self.image_view.load_dataset(ds)
 
         n_frames = self.image_view.frame_count()
@@ -163,6 +223,8 @@ class ViewerTab(QWidget):
                 lines.append(f"{keyword}: {getattr(ds, keyword, '')}")
         self.info_text.setPlainText("\n".join(lines))
 
+    # -- window/level, zoom, frame scrubbing -------------------------------------
+
     def _update_wl_label(self) -> None:
         c, w = self.image_view.window_values()
         self.wl_label.setText(f"Window Center/Width: {c:.1f} / {w:.1f}")
@@ -175,15 +237,57 @@ class ViewerTab(QWidget):
             self.image_view.load_dataset(self._current_ds)  # recomputes default W/L from the header
             self._update_wl_label()
 
-    # -- frame slider ---------------------------------------------------------
-
     def _on_frame_slider_changed(self, value: int) -> None:
         self.image_view.set_frame(value)
         n = self.image_view.frame_count()
         self.frame_label.setText(f"Frame: {self.image_view.current_frame_index() + 1} / {n}")
 
-    def _on_export(self) -> None:
+    # -- mask mode + regions --------------------------------------------------
+
+    def _on_mask_mode_toggled(self, checked: bool) -> None:
+        self.image_view.mask_mode = checked
+        self.mask_mode_button.setText(f"Mask Mode: {'ON' if checked else 'OFF'}")
+
+    def _on_region_drawn(self, rect: Rect) -> None:
+        self._regions.append(rect)
+        self.region_list.addItem(QListWidgetItem(f"x={rect.x}, y={rect.y}, w={rect.width}, h={rect.height}"))
+
+    def _on_remove_region(self) -> None:
+        row = self.region_list.currentRow()
+        if row < 0:
+            return
+        self.region_list.takeItem(row)
+        del self._regions[row]
+
+    def _on_clear_regions(self) -> None:
+        self.region_list.clear()
+        self._regions = []
+
+    # -- export -------------------------------------------------------------
+
+    def _on_save_masked(self) -> None:
         if self._current_ds is None:
+            QMessageBox.warning(self, "No file open", "Open a file first.")
+            return
+        if not self._regions:
+            QMessageBox.warning(self, "No regions", "Draw at least one redaction rectangle first.")
+            return
+
+        frame_indices = None
+        if self.apply_scope_combo.currentText() == "Current frame only":
+            frame_indices = [self.image_view.current_frame_index()]
+
+        out_path, _ = QFileDialog.getSaveFileName(self, "Save masked copy as", filter="DICOM (*.dcm)")
+        if not out_path:
+            return
+
+        apply_masks(self._current_ds, self._regions, frame_indices=frame_indices)
+        self._current_ds.save_as(out_path, enforce_file_format=True)
+        QMessageBox.information(self, "Saved", f"Masked copy saved to {out_path}")
+
+    def _on_export_image(self) -> None:
+        if self._current_ds is None:
+            QMessageBox.warning(self, "No file open", "Open a file first.")
             return
         path, _ = QFileDialog.getSaveFileName(self, "Export frame", filter="PNG (*.png);;JPEG (*.jpg)")
         if not path:

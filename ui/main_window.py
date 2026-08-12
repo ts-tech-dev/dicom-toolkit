@@ -1,8 +1,18 @@
 """
 ui/main_window.py
 ===================
-Top-level window: one tab per tool, all listed here so it's obvious
-what the app can do and how each piece is wired together.
+Top-level window: three tabs total, kept deliberately minimal.
+
+  - Home:        the main page - open/view imaging, mask it, export it.
+  - PACS Admin:  everything that talks to a remote DICOM node (C-ECHO,
+                  Send, Query/Retrieve, Worklist, the Storage SCP
+                  receiver, Node Presets), picked from a dropdown.
+  - Tools:        everything else that operates on local files (Validate,
+                  De-identify, Enhanced->Classic, Dataset Editor, Test
+                  Pattern Generator, Batch Tools), also from a dropdown.
+
+See ui/tab_group.py for the dropdown-plus-stack widget both grouped tabs
+are built from.
 """
 
 from __future__ import annotations
@@ -15,14 +25,14 @@ from ui.tab_convert_enhanced import ConvertEnhancedTab
 from ui.tab_dataset_editor import DatasetEditorTab
 from ui.tab_deidentify import DeidentifyTab
 from ui.tab_echo import EchoTab
-from ui.tab_mask import MaskTab
+from ui.tab_group import GroupedTab
+from ui.tab_home import HomeTab
 from ui.tab_nodes import NodesTab
 from ui.tab_query_retrieve import QueryRetrieveTab
 from ui.tab_send import SendTab
 from ui.tab_storescp import StorageScpTab
 from ui.tab_test_pattern import TestPatternTab
 from ui.tab_validate import ValidateTab
-from ui.tab_viewer import ViewerTab
 from ui.tab_worklist import WorklistTab
 
 
@@ -35,21 +45,28 @@ class MainWindow(QMainWindow):
 
         self.storescp_tab = StorageScpTab()
 
+        pacs_admin_tab = GroupedTab([
+            ("C-ECHO", EchoTab()),
+            ("Send (C-STORE)", SendTab()),
+            ("Query/Retrieve", QueryRetrieveTab()),
+            ("Worklist (MWL)", WorklistTab()),
+            ("Storage SCP (Receiver)", self.storescp_tab),
+            ("Node Presets", NodesTab()),
+        ])
+
+        tools_tab = GroupedTab([
+            ("Validate", ValidateTab()),
+            ("De-identify", DeidentifyTab()),
+            ("Enhanced -> Classic", ConvertEnhancedTab()),
+            ("Dataset Editor", DatasetEditorTab()),
+            ("Test Pattern Generator", TestPatternTab()),
+            ("Batch Tools", BatchTab()),
+        ])
+
         tabs = QTabWidget()
-        tabs.addTab(EchoTab(), "C-ECHO")
-        tabs.addTab(SendTab(), "Send (C-STORE)")
-        tabs.addTab(QueryRetrieveTab(), "Query/Retrieve")
-        tabs.addTab(WorklistTab(), "Worklist (MWL)")
-        tabs.addTab(self.storescp_tab, "Storage SCP (Receiver)")
-        tabs.addTab(ValidateTab(), "Validate")
-        tabs.addTab(ViewerTab(), "Viewer")
-        tabs.addTab(MaskTab(), "Mask")
-        tabs.addTab(DeidentifyTab(), "De-identify")
-        tabs.addTab(ConvertEnhancedTab(), "Enhanced -> Classic")
-        tabs.addTab(DatasetEditorTab(), "Dataset Editor")
-        tabs.addTab(TestPatternTab(), "Test Pattern Generator")
-        tabs.addTab(BatchTab(), "Batch Tools")
-        tabs.addTab(NodesTab(), "Node Presets")
+        tabs.addTab(HomeTab(), "Home")
+        tabs.addTab(pacs_admin_tab, "PACS Admin")
+        tabs.addTab(tools_tab, "Tools")
 
         self.setCentralWidget(tabs)
 
