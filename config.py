@@ -57,6 +57,17 @@ def _app_data_dir() -> Path:
         return Path(base) / folder_name
 
 
+def resource_path(relative: str) -> Path:
+    """
+    Resolve a path to a bundled resource (e.g. assets/icon.ico) that works
+    both running from source and packaged by PyInstaller. Frozen builds
+    extract `datas` under `sys._MEIPASS`; from source, resources live next
+    to this file.
+    """
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base / relative
+
+
 APP_DATA_DIR = _app_data_dir()
 PRESETS_FILE = APP_DATA_DIR / "node_presets.json"
 SETTINGS_FILE = APP_DATA_DIR / "settings.json"

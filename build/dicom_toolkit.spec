@@ -14,6 +14,14 @@ definitions, DIMSE status code tables) dynamically at runtime rather
 than through plain top-level imports, which PyInstaller's static import
 analysis can otherwise miss - without this, the packaged exe can fail
 at runtime with "module not found" even though it builds successfully.
+
+`assets/icon.ico` is bundled twice, deliberately for two different
+purposes: passed to `EXE(icon=...)` so Windows Explorer/the taskbar show
+it for the .exe file itself, and also added to `datas` so the running
+app can load it as the window/title-bar icon via
+config.resource_path("assets/icon.ico") (see main.py) - the icon= param
+only affects the file's own icon, not what QApplication.setWindowIcon
+can load at runtime.
 """
 
 import os
@@ -22,8 +30,9 @@ from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
 project_root = os.path.abspath(os.path.join(SPECPATH, ".."))
+icon_path = os.path.join(project_root, "assets", "icon.ico")
 
-datas = []
+datas = [(icon_path, "assets")]
 binaries = []
 hiddenimports = []
 for pkg in ("pydicom", "pynetdicom"):
@@ -70,4 +79,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=icon_path,
 )

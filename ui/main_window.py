@@ -12,12 +12,14 @@ Top-level window: three tabs total, kept deliberately minimal.
                   Pattern Generator, Batch Tools), also from a dropdown.
 
 See ui/tab_group.py for the dropdown-plus-stack widget both grouped tabs
-are built from.
+are built from, and ui/theme.py for the View > Theme (Light/Dark/Grey)
+switcher wired up here.
 """
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QMainWindow, QMessageBox, QTabWidget
+from PySide6.QtGui import QActionGroup
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QTabWidget
 
 from config import APP_NAME, APP_VERSION, ensure_app_data_dir
 from ui.tab_batch import BatchTab
@@ -34,6 +36,7 @@ from ui.tab_storescp import StorageScpTab
 from ui.tab_test_pattern import TestPatternTab
 from ui.tab_validate import ValidateTab
 from ui.tab_worklist import WorklistTab
+from ui.theme import THEMES, apply_theme, load_saved_theme, save_theme
 
 
 class MainWindow(QMainWindow):
@@ -71,9 +74,26 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(tabs)
 
         menu_bar = self.menuBar()
+
+        view_menu = menu_bar.addMenu("View")
+        theme_menu = view_menu.addMenu("Theme")
+        theme_group = QActionGroup(self)
+        theme_group.setExclusive(True)
+        current_theme = load_saved_theme()
+        for theme_name in THEMES:
+            action = theme_menu.addAction(theme_name)
+            action.setCheckable(True)
+            action.setChecked(theme_name == current_theme)
+            action.triggered.connect(lambda checked, name=theme_name: self._on_theme_selected(name))
+            theme_group.addAction(action)
+
         help_menu = menu_bar.addMenu("Help")
         about_action = help_menu.addAction("About")
         about_action.triggered.connect(self._show_about)
+
+    def _on_theme_selected(self, name: str) -> None:
+        apply_theme(QApplication.instance(), name)
+        save_theme(name)
 
     def _show_about(self) -> None:
         QMessageBox.information(

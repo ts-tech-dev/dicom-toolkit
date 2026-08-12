@@ -48,6 +48,9 @@ will prompt to allow the app through the firewall the first time you start
 listening. Allow it (at least on "Private" networks) or inbound C-STORE/
 C-ECHO from other devices won't reach you.
 
+**Appearance:** use **View -> Theme** in the menu bar to switch between
+Light, Dark, and Grey. The choice is remembered between runs.
+
 **Ports below 1024** (e.g. setting Storage SCP to the "official" port 104)
 require running as Administrator on Windows. The default receiver port,
 11112, does not.
@@ -105,12 +108,16 @@ core/                       all DICOM logic - no GUI code, reusable/testable on 
   test_pattern.py                   synthetic DICOM generator
   presets.py                         saved node connection profiles
 ui/                        all GUI code (PySide6)
-  main_window.py             assembles the three top-level tabs
-  tab_group.py                 dropdown-plus-stack widget PACS Admin/Tools are built from
-  tab_home.py                   Home tab: view, mask, export
-  worker.py                    generic background-thread runner for network/batch jobs
-  tab_*.py                       one file per PACS Admin / Tools entry
-  widgets/                        reusable pieces (image viewer, node picker, log console)
+  main_window.py             assembles the three top-level tabs, View > Theme menu
+  theme.py                     Light/Dark/Grey QPalette definitions + persistence
+  tab_group.py                   dropdown-plus-stack widget PACS Admin/Tools are built from
+  tab_home.py                     Home tab: view, mask, export
+  worker.py                        generic background-thread runner for network/batch jobs
+  tab_*.py                           one file per PACS Admin / Tools entry
+  widgets/                            reusable pieces (image viewer, node picker, log console)
+assets/
+  icon.ico / icon.png         app icon (window/taskbar icon + .exe icon)
+  generate_icon.py             regenerates the two files above
 build/
   dicom_toolkit.spec         PyInstaller build configuration
   build.bat                    one-click Windows build script
