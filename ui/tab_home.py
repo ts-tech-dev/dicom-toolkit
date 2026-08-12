@@ -4,11 +4,18 @@ ui/tab_home.py
 Home tab: the app's main page. Browse imaging in a Patient -> Study ->
 Series -> Image hierarchy (like a PACS browser, not a flat file list),
 view it with proper window/level, zoom, pan, multi-frame (cine) scrubbing,
-and image-to-image scrubbing within a series, optionally mask (redact)
-regions of it - with the marked regions staying visible on the image
-instead of only flashing during the drag that drew them - then export
-either the currently displayed frame to PNG/JPG, or the drawn mask
-regions applied across every image in the whole study to DICOM.
+and mouse-wheel/button scrubbing from image to image within a series.
+
+Masking is per-image and persistent: regions drawn on one image are kept
+in self._regions_by_path (keyed by file path) rather than a single
+transient list, so navigating to a different image and back doesn't lose
+what you drew - it's there to edit or delete. A region can optionally be
+broadcast to every other image in the same series as it's drawn (see
+series_scope_combo). "Apply Masks & Export Study" then walks every image
+in the whole study and, for each one, either burns in that image's own
+stored regions or copies the file through untouched if none were drawn
+on it - so one export covers every edit made across the whole browsing
+session in a single pass.
 
 Viewing and masking share one ImageView (see ui/widgets/image_view.py):
 "Mask Mode" toggles that widget between its two left-drag behaviors -
@@ -19,6 +26,7 @@ image never needs to be reopened in a separate tool to redact it.
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 import pydicom
@@ -100,15 +108,20 @@ def _scan_headers(files: list[str], log=None) -> list[dict]:
     return rows
 
 
-def _export_masked_study(paths, regions, frame_indices, common_root, out_dir, log=None):
+def _export_masked_study(paths, regions_by_path, frame_indices, common_root, out_dir, log=None):
     """
-    Apply `regions` to every file in `paths` (the whole study, gathered by
-    the caller from the browser tree) and save masked copies under
-    `out_dir`, mirroring each file's path relative to `common_root` so
-    files from different series don't collide/overwrite each other.
+    Walk every file in `paths` (the whole study, gathered by the caller
+    from the browser tree). A file with regions recorded for it in
+    `regions_by_path` gets those regions burned in and re-saved; a file
+    with none is copied through byte-for-byte untouched (so the export
+    is a complete copy of the study, not just the images that got
+    redacted, without needlessly re-encoding images nobody marked).
+    Output is written under `out_dir`, mirroring each file's path
+    relative to `common_root` so files from different series don't
+    collide/overwrite each other.
 
-    Regions are pixel coordinates from whichever image they were drawn on;
-    other images/series in the study may be a different size, so
+    Regions are pixel coordinates from whichever image they were drawn
+    on; other images/series in the study may be a different size, so
     core.mask.apply_masks's own clipping is what keeps this from writing
     out-of-bounds - it does not rescale regions for images of a different
     size than the one they were drawn on (see README "Scope and
@@ -117,6 +130,18 @@ def _export_masked_study(paths, regions, frame_indices, common_root, out_dir, lo
     ok, failed = 0, 0
     for f in paths:
         try:
+            rel = Path(f).relative_to(common_root)
+            out_path = Path(out_dir) / rel
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+
+            regions = regions_by_path.get(f)
+            if not regions:
+                shutil.copy2(f, out_path)
+                if log:
+                    log(f"  COPY {rel} (no regions drawn on this image)")
+                ok += 1
+                continue
+
             ds = pydicom.dcmread(f)
             if "PixelData" not in ds:
                 if log:
@@ -127,20 +152,17 @@ def _export_masked_study(paths, regions, frame_indices, common_root, out_dir, lo
             if targets is not None:
                 n_frames = int(ds.get("NumberOfFrames", 1) or 1)
                 in_range = [i for i in targets if i < n_frames]
-                # The requested frame index came from a different file (the
-                # one open when Export was clicked); if this file doesn't
-                # have that many frames, mask all of its frames instead of
+                # The requested frame index came from whichever image was
+                # open when Export was clicked; if this file doesn't have
+                # that many frames, mask all of its frames instead of
                 # silently masking nothing (or crashing on an out-of-range
                 # index).
                 targets = in_range if in_range else (list(range(n_frames)) if n_frames > 1 else [0])
 
             apply_masks(ds, regions, frame_indices=targets)
-            rel = Path(f).relative_to(common_root)
-            out_path = Path(out_dir) / rel
-            out_path.parent.mkdir(parents=True, exist_ok=True)
             ds.save_as(out_path, enforce_file_format=True)
             if log:
-                log(f"  OK   {rel}")
+                log(f"  MASKED {rel}")
             ok += 1
         except Exception as exc:  # noqa: BLE001 - keep the study export going past one bad file
             if log:
@@ -181,6 +203,7 @@ class HomeTab(QWidget):
         self.image_view = ImageView()
         self.image_view.region_drawn.connect(self._on_region_drawn)
         self.image_view.window_level_changed.connect(self._on_window_level_changed)
+        self.image_view.wheel_navigate.connect(self._on_wheel_navigate)
 
         self.prev_image_button = QPushButton("◀ Prev Image")
         self.next_image_button = QPushButton("Next Image ▶")
@@ -189,10 +212,12 @@ class HomeTab(QWidget):
         self.prev_image_button.clicked.connect(self._on_prev_image)
         self.next_image_button.clicked.connect(self._on_next_image)
         self.series_position_label = QLabel("")
+        self.scroll_hint_label = QLabel("Scroll wheel: change image  |  Ctrl+Scroll: zoom")
 
         series_nav = QHBoxLayout()
         series_nav.addWidget(self.prev_image_button)
         series_nav.addWidget(self.next_image_button)
+        series_nav.addWidget(self.scroll_hint_label)
         series_nav.addStretch()
         series_nav.addWidget(self.series_position_label)
 
@@ -231,7 +256,9 @@ class HomeTab(QWidget):
         # -- right: masking + export + activity log ------------------------------
         self.mask_hint_label = QLabel(
             "Turn on Mask Mode above, then left-drag on the image to draw a "
-            "redaction rectangle. Marked regions stay visible on the image."
+            "redaction rectangle. Regions are kept per-image - switch to "
+            "another image or series and back, and they're still here to "
+            "edit or delete."
         )
         self.mask_hint_label.setWordWrap(True)
         self.region_list = QListWidget()
@@ -239,8 +266,13 @@ class HomeTab(QWidget):
         self.clear_regions_button = QPushButton("Clear All Regions")
         self.remove_region_button.clicked.connect(self._on_remove_region)
         self.clear_regions_button.clicked.connect(self._on_clear_regions)
+
         self.apply_scope_combo = QComboBox()
         self.apply_scope_combo.addItems(["Current frame only", "All frames"])
+
+        self.series_scope_combo = QComboBox()
+        self.series_scope_combo.addItems(["This image only", "All images in this series"])
+
         self.export_study_button = QPushButton("Apply Masks && Export Study...")
         self.export_study_button.clicked.connect(self._on_export_masked_study)
 
@@ -251,11 +283,14 @@ class HomeTab(QWidget):
         region_buttons.addWidget(self.remove_region_button)
         region_buttons.addWidget(self.clear_regions_button)
         mask_box_layout.addLayout(region_buttons)
-        mask_box_layout.addWidget(QLabel("Apply masks to:"))
+        mask_box_layout.addWidget(QLabel("Apply masked frames to:"))
         mask_box_layout.addWidget(self.apply_scope_combo)
+        mask_box_layout.addWidget(QLabel("When drawing a new region, also add it to:"))
+        mask_box_layout.addWidget(self.series_scope_combo)
         export_study_hint = QLabel(
-            "Export applies these regions to every image in the whole "
-            "study (all series), not just the one currently open."
+            "Export walks the whole study (all series): images with "
+            "regions get masked, images without any are copied through "
+            "unchanged."
         )
         export_study_hint.setWordWrap(True)
         mask_box_layout.addWidget(export_study_hint)
@@ -293,6 +328,12 @@ class HomeTab(QWidget):
 
         self._current_path: str | None = None
         self._current_ds = None
+        # Source of truth for masking: every image's regions, keyed by file
+        # path, so switching images/series doesn't lose what was drawn.
+        # self._regions is kept pointed at the current image's own list
+        # (see _load_image) so the existing draw/remove/clear handlers can
+        # keep mutating it in place without extra bookkeeping.
+        self._regions_by_path: dict[str, list[Rect]] = {}
         self._regions: list[Rect] = []
         self._scan_thread = None
         self._export_thread = None
@@ -445,6 +486,12 @@ class HomeTab(QWidget):
         if idx < len(siblings) - 1:
             self.tree.setCurrentItem(siblings[idx + 1])
 
+    def _on_wheel_navigate(self, direction: int) -> None:
+        if direction < 0:
+            self._on_prev_image()
+        else:
+            self._on_next_image()
+
     # -- loading an image ----------------------------------------------------
 
     def _load_image(self, path: str) -> None:
@@ -462,10 +509,12 @@ class HomeTab(QWidget):
 
         self._current_path = path
         self._current_ds = ds
-        self._regions = []
+        self._regions = self._regions_by_path.setdefault(path, [])
         self.region_list.clear()
+        for r in self._regions:
+            self.region_list.addItem(self._region_list_item(r))
         self.image_view.load_dataset(ds)
-        self.image_view.set_mask_preview_regions([])
+        self.image_view.set_mask_preview_regions(self._regions)
 
         n_frames = self.image_view.frame_count()
         self.frame_slider.setMaximum(max(0, n_frames - 1))
@@ -506,10 +555,28 @@ class HomeTab(QWidget):
         self.image_view.mask_mode = checked
         self.mask_mode_button.setText(f"Mask Mode: {'ON' if checked else 'OFF'}")
 
+    @staticmethod
+    def _region_list_item(rect: Rect) -> QListWidgetItem:
+        return QListWidgetItem(f"x={rect.x}, y={rect.y}, w={rect.width}, h={rect.height}")
+
+    def _current_series_paths(self) -> list[str]:
+        return [item.data(0, Qt.UserRole) for item in self._current_series_siblings()]
+
     def _on_region_drawn(self, rect: Rect) -> None:
         self._regions.append(rect)
-        self.region_list.addItem(QListWidgetItem(f"x={rect.x}, y={rect.y}, w={rect.width}, h={rect.height}"))
+        self.region_list.addItem(self._region_list_item(rect))
         self.image_view.set_mask_preview_regions(self._regions)
+
+        if self.series_scope_combo.currentText() == "All images in this series":
+            broadcast_count = 0
+            for sibling_path in self._current_series_paths():
+                if sibling_path == self._current_path:
+                    continue
+                sibling_regions = self._regions_by_path.setdefault(sibling_path, [])
+                sibling_regions.append(Rect(rect.x, rect.y, rect.width, rect.height))
+                broadcast_count += 1
+            if broadcast_count:
+                self.log.info(f"Also added this region to {broadcast_count} other image(s) in the series.")
 
     def _on_remove_region(self) -> None:
         row = self.region_list.currentRow()
@@ -521,7 +588,7 @@ class HomeTab(QWidget):
 
     def _on_clear_regions(self) -> None:
         self.region_list.clear()
-        self._regions = []
+        self._regions.clear()
         self.image_view.set_mask_preview_regions(self._regions)
 
     # -- export -------------------------------------------------------------
@@ -546,14 +613,22 @@ class HomeTab(QWidget):
         if self._current_ds is None:
             QMessageBox.warning(self, "No file open", "Open a file first.")
             return
-        if not self._regions:
-            QMessageBox.warning(self, "No regions", "Draw at least one redaction rectangle first.")
-            return
         study_item = self._current_study_item()
         if study_item is None:
             QMessageBox.warning(self, "No study", "Open a file from the browser first.")
             return
         paths = self._collect_image_paths(study_item)
+
+        # Every image in the study that has at least one region recorded for
+        # it - not just the currently open one - since regions persist per
+        # image across navigation (see _load_image/_regions_by_path above).
+        regions_by_path = {p: list(self._regions_by_path[p]) for p in paths if self._regions_by_path.get(p)}
+        if not regions_by_path:
+            QMessageBox.warning(
+                self, "No regions",
+                "Draw at least one redaction rectangle on an image in this study first.",
+            )
+            return
 
         out_dir = QFileDialog.getExistingDirectory(self, "Folder to save the masked study into")
         if not out_dir:
@@ -576,7 +651,7 @@ class HomeTab(QWidget):
         self._export_thread = run_in_background(
             _export_masked_study,
             paths=paths,
-            regions=list(self._regions),
+            regions_by_path=regions_by_path,
             frame_indices=frame_indices,
             common_root=common_root,
             out_dir=out_dir,

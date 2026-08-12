@@ -4,7 +4,8 @@ ui/widgets/image_view.py
 DICOM image display widget built on QGraphicsView. Renders a pydicom
 Dataset's pixel data with window/level applied, and supports:
 
-  - Mouse wheel:            zoom
+  - Mouse wheel:            scroll through the series (emits wheel_navigate)
+  - Ctrl + mouse wheel:      zoom
   - Right-button drag:       pan
   - Left-button drag:         adjust window center/width (standard viewer
                                  convention: up/down = center, left/right = width)
@@ -63,6 +64,7 @@ def _apply_window(frame: np.ndarray, center: float, width: float) -> np.ndarray:
 class ImageView(QGraphicsView):
     window_level_changed = Signal(float, float)  # center, width
     region_drawn = Signal(object)  # emits a core.mask.Rect when a mask-mode drag completes
+    wheel_navigate = Signal(int)  # -1/+1: plain wheel scroll, not over a zoom (Ctrl) gesture
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -198,8 +200,11 @@ class ImageView(QGraphicsView):
     # -- interaction: zoom, pan, window/level drag, mask-mode rectangle ------
 
     def wheelEvent(self, event):
-        factor = 1.25 if event.angleDelta().y() > 0 else 0.8
-        self.scale(factor, factor)
+        if event.modifiers() & Qt.ControlModifier:
+            factor = 1.25 if event.angleDelta().y() > 0 else 0.8
+            self.scale(factor, factor)
+        else:
+            self.wheel_navigate.emit(-1 if event.angleDelta().y() > 0 else 1)
 
     def mousePressEvent(self, event):
         if self._pixmap_item is None:

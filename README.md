@@ -16,7 +16,7 @@ tabs.
 
 | Tab | Tool (dropdown, where applicable) | What it does |
 |---|---|---|
-| **Home** | *(no dropdown - this is the main page)* | Open a file or folder of imaging, browse it as a Patient -> Study -> Series -> Image tree, view it with window/level, zoom, pan, multi-frame (cine) scrubbing and image-to-image scrubbing through a series; draw rectangles in Mask Mode to redact burned-in PHI (marked regions stay visible on the image); export the current frame to PNG/JPG, or apply the drawn regions across the *whole study* and export masked DICOM copies of every image in it. |
+| **Home** | *(no dropdown - this is the main page)* | Open a file or folder of imaging, browse it as a Patient -> Study -> Series -> Image tree, view it with window/level, zoom, pan, multi-frame (cine) scrubbing, and mouse-wheel/button scrubbing between images in a series; draw rectangles in Mask Mode to redact burned-in PHI - regions are kept per-image (switch images/series and back and they're still there to edit or delete) and can optionally be broadcast to every image in the series as you draw; export the current frame to PNG/JPG, or export the *whole study* at once - every image with regions gets masked, every image without any is copied through unchanged. |
 | **PACS Admin** | C-ECHO | Verify a node is reachable and answering (DICOM "ping"). |
 | | Send (C-STORE) | Push files/folders to a remote AE. |
 | | Query/Retrieve | C-FIND a PACS at Patient/Study/Series/Image level, then C-MOVE or C-GET the results. |
@@ -50,6 +50,12 @@ C-ECHO from other devices won't reach you.
 
 **Appearance:** use **View -> Theme** in the menu bar to switch between
 Light, Dark, and Grey. The choice is remembered between runs.
+
+**Home tab controls:** scroll wheel over the image moves to the
+previous/next image in the current series (Ctrl+Scroll zooms instead);
+the same navigation is available via the Prev/Next Image buttons or
+PgUp/PgDown. Left-drag adjusts window/level; right-drag pans; turning on
+Mask Mode switches left-drag to drawing redaction rectangles instead.
 
 **Ports below 1024** (e.g. setting Storage SCP to the "official" port 104)
 require running as Administrator on Windows. The default receiver port,
